@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Play MEGA Videos</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.0/jquery.min.js"></script>
+    <script src="https://eu.static.mega.co.nz/base64_1.js"></script>
+    <script src="https://eu.static.mega.co.nz/mouse_1.js"></script>
+    <script src="https://eu.static.mega.co.nz/keygen_2.js"></script>
+    <script src="https://eu.static.mega.co.nz/sjcl_1.js"></script>
+    <script src=""></script>
+    <script src="https://eu.static.mega.co.nz/crypto_2.js"></script>
+    <link rel="stylesheet" href="bootstrap/css/bootstrap.min.css" />
+    <style type="text/css">
+      body {
+        padding-top: 20px;
+        padding-bottom: 40px;
+      }
+
+      /* Custom container */
+      #link-container {
+        margin-top: 20px;
+      }
+
+      #spinner {
+        margin-top: 20px;
+      }
+
+      #alert {
+        display: none;
+      }
+
+      #spinner {
+        display: none;
+      }
+      /* Main marketing message and sign up button */
+      .jumbotron {
+        margin: 30px 0;
+        text-align: center;
+      }
+      .jumbotron h1 {
+        font-size: 48px;
+        line-height: 1;
+      }
+
+      /* Supporting marketing content */
+      .marketing {
+        margin: 60px 0;
+      }
+      .marketing p + h4 {
+        margin-top: 28px;
+      }
+    </style>
+    <!--<script src="https://eu.static.mega.co.nz/download_1.js"></script>-->
+    <script>
+      String.prototype.endsWith = function(suffix) {
+        return this.indexOf(suffix, this.length - suffix.length) !== -1;
+      };
+      var onEnter = function(event) {
+        if (event.keyCode==13) {
+          openlink();
+        }
+      };
+      var d = false;
+      var u_sid = null;
+      var apipath = "https://g.api.mega.co.nz/";
+      var CHUNK_SIZE = 512*1024;
+      var start_download = function(url, type, size, position, sourceBuffer, mediaSource) {
+        if (position >= size) {
+          mediaSource.endOfStream();
+          return;
+        }
+
+        var oReq = new XMLHttpRequest();
+        oReq.open("GET", url + "/" + position + "-" + (position+CHUNK_SIZE-1), true);
+        oReq.responseType = "arraybuffer";
+        oReq.onload = function (oEvent) {
+
+          var arrayBuffer = oReq.response;
+          var dl_aes = new sjcl.cipher.aes([dl_key[0]^dl_key[4],dl_key[1]^dl_key[5],dl_key[2]^dl_key[6],dl_key[3]^dl_key[7]]);
+          var byteArray = new Uint8Array(arrayBuffer);
+          decrypt_ab_ctr(dl_aes,byteArray,[dl_key[4],dl_key[5]],position);
+
+          if (position > 0) {
+            if (mediaSource.readyState == "open") {
+              sourceBuffer.append(byteArray);
+              start_download(url, type, size, position + byteArray.length, sourceBuffer, mediaSource);
+            } else {
+              show_error("Video format unsupported!");
+            }
+          } else {
+      	    function onSourceOpen(videoTag, e) {
+              var mediaSource = e.target;
+              var sourceBuffer = mediaSource.addSourceBuffer(type);
+              console.log(sourceBuffer);
+
+              //videoTag.addEventListener('seeking', onSeeking.bind(videoTag, mediaSource));
+              //videoTag.addEventListener('progress', onProgress.bind(videoTag, mediaSource));
+
+              sourceBuffer.append(byteArray);
+              start_download(url, type, size, position + byteArray.length, sourceBuffer, mediaSource);
+              $("#video-container").show();
+              $("#spinner").hide();
+            }
+
+            var video = document.getElementById('v');
+            var ms = new MediaSource();
+            ms.addEventListener('webkitsourceopen', onSourceOpen.bind(this,video));
+            video.src = window.URL.createObjectURL(ms);
+          }
+        }
+        oReq.send(null);
+      };
+
+      var handleDownloadResponse = function(res) {
+        if (typeof res == 'object') {
+          if (typeof res[0] == 'number') {
+            //todo: error(res[0]);
+          } else {
+            if (res[0].d) {
+              // todo: error(res[0].d ? 2 : 1);
+            } else if (res[0].g) {
+              var ab = base64_to_ab(res[0].at);
+              var o = dec_attr(ab,[dl_key[0]^dl_key[4],dl_key[1]^dl_key[5],dl_key[2]^dl_key[6],dl_key[3]^dl_key[7]]);
+              if (typeof o == 'object' && typeof o.n == 'string') {
+                var type = null;
+                var filename = o.n;
+                if (filename.endsWith(".mp4")) {
+                  type = 'video/mp4; codecs="avc1.42001E, mp4a.40.2"';
+                } else if (filename.endsWith(".webm")) {
+                  type = 'video/webm; codecs="vorbis,vp8"';
+                }
+                if (type != null) {
+                  $("#video-name").text(filename);
+                  start_download(res[0].g, type, res[0].s, 0);
+                } else {
+                  show_error("Unsupported format!");
+                }
+              } else {
+                // todo: error(EKEY);
+              }
+            } else {
+              // todo: error(res[0].e);
+            }
+          }
+        } else {
+          show_error("Unknown error occured");
+        }
+      }
+      window.MediaSource = window.MediaSource || window.WebKitMediaSource;
+
+      var dl_key = [];
+
+      var show_error = function(text) {
+        $("#spinner").hide();
+        $("#link-container").show();
+        $("#video-container").hide();
+        $("#alert-text").text(text);
+        $("#alert").show();
+      }
+
+      var play_video = function(hashTag) {
+        hashParts = hashTag.split('!');
+        if (hashParts.length == 3) {
+          if (hashParts[2].length == "43") {
+            var req = { a : 'g', g: 1, ssl : 1, p : hashParts[1] };
+            dl_key = base64_to_a32(hashParts[2]);
+            $("#spinner").show();
+            $("#link-container").hide();
+            $("#video-container").hide();
+            $("#alert").hide();
+            api_req([req],{ callback : handleDownloadResponse });
+          } else {
+            show_error("Invalid file key!");
+          }
+        } else {
+          show_error("Invalid MEGA link!");
+        }
+      }
+
+      var openlink = function() {
+        var url = $("#linktext").val();
+        var hash = url.split("#")[1];
+        play_video(hash);
+        window.location.hash = hash;
+      }
+
+      $(function() {
+        var hash = window.location.hash;
+        if (hash.indexOf("!") !== -1) {
+          play_video(hash);
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <div class="jumbotron">
+      <h1 id="title">Play MEGA videos!</h1>
+      <div id="alert" class="alert alert-error" style="width: 720px; margin: auto;">
+        <button type="button" class="close" data-dismiss="alert">&times;</button>
+        <strong>Error!</strong> <span id="alert-text">Alert Biatches</span>
+      </div>
+      <div id="video-container" style="display:none;">
+        <h4 id="video-name">test.mp4</h4>
+        <video style="margin-left: auto; margin-right: auto;" id="v" width="720" height="480" controls>
+        Your browser does not support the video tag.
+        </video>
+      </div>
+      <div id="link-container" class="form-horizontal">
+        <input id="linktext" style="width: 500px" type="text" class="" placeholder="Paste MEGA link"
+        onKeyPress="onEnter(event)" />
+        <!--<button class="btn">button</button>-->
+        <input type="submit" class="btn btn-success" href="#" onClick="openlink()" />
+      </div>
+      <div id="spinner" style="display:none;">
+        <img src="img/spinner.gif" />
+      </div>
+    </div>
+
+    <script src="bootstrap/js/bootstrap.min.js"></script>
+  </body>
+
+</html>
