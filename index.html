@@ -148,6 +148,7 @@
       }
       window.MediaSource = window.MediaSource || window.WebKitMediaSource;
 
+
       var dl_key = [];
 
       var show_error = function(text) {
@@ -185,9 +186,16 @@
       }
 
       $(function() {
-        var hash = window.location.hash;
-        if (hash.indexOf("!") !== -1) {
-          play_video(hash);
+        if (!window.MediaSource) {
+          $("#spinner").hide();
+          $("#video-container").hide();
+          show_error("Browser not supported! Try it with the latest Google Chrome");
+          $("#link-container").hide();
+        } else {
+          var hash = window.location.hash;
+          if (hash.indexOf("!") !== -1) {
+            play_video(hash);
+          }
         }
       });
     </script>
